@@ -1,6 +1,9 @@
-/* nRF24L01+ I/O for Energia
+/* analog_io_lib for Energia and the MSP430 Sensor Node Hardware
+ * Forked from nRF24L01+ I/O for Energia
  *
  * Copyright (c) 2013 Eric Brundick <spirilis [at] linux dot com>
+ * Copyright (c) 2015 Luke Beno <lgbeno [at] analog dot io>
+ *
  *  Permission is hereby granted, free of charge, to any person 
  *  obtaining a copy of this software and associated documentation 
  *  files (the "Software"), to deal in the Software without 
@@ -24,10 +27,10 @@
 
 #include <Arduino.h>
 #include <stdint.h>
-#include "Enrf24.h"
+#include "analog_io.h"
 
 /* Constructor */
-Enrf24::Enrf24(uint8_t cePin, uint8_t csnPin, uint8_t irqPin)
+analog_io::analog_io(uint8_t cePin, uint8_t csnPin, uint8_t irqPin)
 {
   _cePin = cePin;
   _csnPin = csnPin;
@@ -40,7 +43,7 @@ Enrf24::Enrf24(uint8_t cePin, uint8_t csnPin, uint8_t irqPin)
 }
 
 /* Initialization */
-void Enrf24::begin(uint32_t datarate, uint8_t channel)
+void analog_io::begin(uint32_t datarate, uint8_t channel)
 {
   pinMode(_cePin, OUTPUT);
   digitalWrite(_cePin, LOW);
@@ -94,7 +97,7 @@ void Enrf24::begin(uint32_t datarate, uint8_t channel)
 }
 
 /* Formal shut-down/clearing of library state */
-void Enrf24::end()
+void analog_io::end()
 {
   txbuf_len = 0;
   rf_status = 0;
@@ -112,7 +115,7 @@ void Enrf24::end()
 }
 
 /* Basic SPI I/O */
-uint8_t Enrf24::_readReg(uint8_t addr)
+uint8_t analog_io::_readReg(uint8_t addr)
 {
   uint8_t result;
 
@@ -123,7 +126,7 @@ uint8_t Enrf24::_readReg(uint8_t addr)
   return result;
 }
 
-void Enrf24::_readRegMultiLSB(uint8_t addr, uint8_t *buf, size_t len)
+void analog_io::_readRegMultiLSB(uint8_t addr, uint8_t *buf, size_t len)
 {
   uint8_t i;
   digitalWrite(_csnPin, LOW);
@@ -134,7 +137,7 @@ void Enrf24::_readRegMultiLSB(uint8_t addr, uint8_t *buf, size_t len)
   digitalWrite(_csnPin, HIGH);
 }
 
-void Enrf24::_writeReg(uint8_t addr, uint8_t val)
+void analog_io::_writeReg(uint8_t addr, uint8_t val)
 {
   digitalWrite(_csnPin, LOW);
   rf_status = SPI.transfer(RF24_W_REGISTER | addr);
@@ -142,7 +145,7 @@ void Enrf24::_writeReg(uint8_t addr, uint8_t val)
   digitalWrite(_csnPin, HIGH);
 }
 
-void Enrf24::_writeRegMultiLSB(uint8_t addr, uint8_t *buf, size_t len)
+void analog_io::_writeRegMultiLSB(uint8_t addr, uint8_t *buf, size_t len)
 {
   size_t i;
 
@@ -154,14 +157,14 @@ void Enrf24::_writeRegMultiLSB(uint8_t addr, uint8_t *buf, size_t len)
   digitalWrite(_csnPin, HIGH);
 }
 
-void Enrf24::_issueCmd(uint8_t cmd)
+void analog_io::_issueCmd(uint8_t cmd)
 {
   digitalWrite(_csnPin, LOW);
   rf_status = SPI.transfer(cmd);
   digitalWrite(_csnPin, HIGH);
 }
 
-void Enrf24::_issueCmdPayload(uint8_t cmd, uint8_t *buf, size_t len)
+void analog_io::_issueCmdPayload(uint8_t cmd, uint8_t *buf, size_t len)
 {
   size_t i;
 
@@ -173,7 +176,7 @@ void Enrf24::_issueCmdPayload(uint8_t cmd, uint8_t *buf, size_t len)
   digitalWrite(_csnPin, HIGH);
 }
 
-void Enrf24::_readCmdPayload(uint8_t cmd, uint8_t *buf, size_t len, size_t maxlen)
+void analog_io::_readCmdPayload(uint8_t cmd, uint8_t *buf, size_t len, size_t maxlen)
 {
   size_t i;
 
@@ -189,7 +192,7 @@ void Enrf24::_readCmdPayload(uint8_t cmd, uint8_t *buf, size_t len, size_t maxle
   digitalWrite(_csnPin, HIGH);
 }
 
-boolean Enrf24::_isAlive()
+boolean analog_io::_isAlive()
 {
   uint8_t aw;
 
@@ -197,32 +200,32 @@ boolean Enrf24::_isAlive()
   return ((aw & 0xFC) == 0x00 && (aw & 0x03) != 0x00);
 }
 
-uint8_t Enrf24::_irq_getreason()
+uint8_t analog_io::_irq_getreason()
 {
   lastirq = _readReg(RF24_STATUS) & ENRF24_IRQ_MASK;
   return lastirq;
 }
 
 // Get IRQ from last known rf_status update without querying module over SPI.
-uint8_t Enrf24::_irq_derivereason()
+uint8_t analog_io::_irq_derivereason()
 {
   lastirq = rf_status & ENRF24_IRQ_MASK;
   return lastirq;
 }
 
-void Enrf24::_irq_clear(uint8_t irq)
+void analog_io::_irq_clear(uint8_t irq)
 {
   _writeReg(RF24_STATUS, irq & ENRF24_IRQ_MASK);
 }
 
 #define ENRF24_CFGMASK_CRC(a) (a & (RF24_EN_CRC | RF24_CRCO))
 
-void Enrf24::_readTXaddr(uint8_t *buf)
+void analog_io::_readTXaddr(uint8_t *buf)
 {
   _readRegMultiLSB(RF24_TX_ADDR, buf, rf_addr_width);
 }
 
-void Enrf24::_writeRXaddrP0(uint8_t *buf)
+void analog_io::_writeRXaddrP0(uint8_t *buf)
 {
   _writeRegMultiLSB(RF24_RX_ADDR_P0, buf, rf_addr_width);
 }
@@ -231,7 +234,7 @@ void Enrf24::_writeRXaddrP0(uint8_t *buf)
 /* nRF24 I/O maintenance--called as a "hook" inside other I/O functions to give
  * the library a chance to take care of its buffers et al
  */
-void Enrf24::_maintenanceHook()
+void analog_io::_maintenanceHook()
 {
   uint8_t i;
 
@@ -282,7 +285,7 @@ void Enrf24::_maintenanceHook()
 
 
 /* Public functions */
-boolean Enrf24::available(boolean checkIrq)
+boolean analog_io::available(boolean checkIrq)
 {
   if (checkIrq && digitalRead(_irqPin) == HIGH && readpending == 0)
     return false;
@@ -296,7 +299,7 @@ boolean Enrf24::available(boolean checkIrq)
   return false;
 }
 
-size_t Enrf24::read(void *inbuf, uint8_t maxlen)
+size_t analog_io::read(void *inbuf, uint8_t maxlen)
 {
   uint8_t *buf = (uint8_t *)inbuf;
   uint8_t plwidth;
@@ -317,7 +320,7 @@ size_t Enrf24::read(void *inbuf, uint8_t maxlen)
 }
 
 // Perform TX of current ring-buffer contents
-void Enrf24::flush()
+void analog_io::flush()
 {
   uint8_t reg, addrbuf[5];
   boolean enaa=false, origrx=false;
@@ -386,12 +389,12 @@ void Enrf24::flush()
   }
 }
 
-void Enrf24::purge()
+void analog_io::purge()
 {
   txbuf_len = 0;
 }
 
-size_t Enrf24::write(uint8_t c)
+size_t analog_io::write(uint8_t c)
 {
   if (txbuf_len == 32) {  // If we're trying to stuff an already-full buffer...
     flush();  // Blocking OTA TX
@@ -403,7 +406,7 @@ size_t Enrf24::write(uint8_t c)
   return 1;
 }
 
-uint8_t Enrf24::radioState()
+uint8_t analog_io::radioState()
 {
   uint8_t reg;
 
@@ -427,7 +430,7 @@ uint8_t Enrf24::radioState()
   return ENRF24_STATE_PTX;
 }
 
-void Enrf24::deepsleep()
+void analog_io::deepsleep()
 {
   uint8_t reg;
 
@@ -438,7 +441,7 @@ void Enrf24::deepsleep()
   digitalWrite(_cePin, LOW);
 }
 
-void Enrf24::enableRX()
+void analog_io::enableRX()
 {
   uint8_t reg;
 
@@ -451,7 +454,7 @@ void Enrf24::enableRX()
   }
 }
 
-void Enrf24::disableRX()
+void analog_io::disableRX()
 {
   uint8_t reg;
 
@@ -467,7 +470,7 @@ void Enrf24::disableRX()
   }
 }
 
-void Enrf24::autoAck(boolean onoff)
+void analog_io::autoAck(boolean onoff)
 {
   uint8_t reg;
 
@@ -483,14 +486,14 @@ void Enrf24::autoAck(boolean onoff)
   }
 }
 
-void Enrf24::setChannel(uint8_t channel)
+void analog_io::setChannel(uint8_t channel)
 {
   if (channel > 125)
     channel = 125;
   _writeReg(RF24_RF_CH, channel);
 }
 
-void Enrf24::setTXpower(int8_t dBm)
+void analog_io::setTXpower(int8_t dBm)
 {
   uint8_t reg, pwr;
 
@@ -507,7 +510,7 @@ void Enrf24::setTXpower(int8_t dBm)
   _writeReg(RF24_RF_SETUP, reg | pwr);
 }
 
-void Enrf24::setSpeed(uint32_t rfspeed)
+void analog_io::setSpeed(uint32_t rfspeed)
 {
   uint8_t reg, spd;
 
@@ -520,7 +523,7 @@ void Enrf24::setSpeed(uint32_t rfspeed)
   _writeReg(RF24_RF_SETUP, reg | (spd << 3));
 }
 
-void Enrf24::setCRC(boolean onoff, boolean crc16bit)
+void analog_io::setCRC(boolean onoff, boolean crc16bit)
 {
   uint8_t reg, crcbits=0;
 
@@ -532,7 +535,7 @@ void Enrf24::setCRC(boolean onoff, boolean crc16bit)
   _writeReg(RF24_CONFIG, reg | crcbits);
 }
 
-void Enrf24::setAutoAckParams(uint8_t autoretry_count, uint16_t autoretry_timeout)
+void analog_io::setAutoAckParams(uint8_t autoretry_count, uint16_t autoretry_timeout)
 {
   uint8_t setup_retr=0;
 
@@ -542,7 +545,7 @@ void Enrf24::setAutoAckParams(uint8_t autoretry_count, uint16_t autoretry_timeou
   _writeReg(RF24_SETUP_RETR, setup_retr);
 }
 
-void Enrf24::setAddressLength(size_t len)
+void analog_io::setAddressLength(size_t len)
 {
   if (len < 3)
     len = 3;
@@ -553,17 +556,17 @@ void Enrf24::setAddressLength(size_t len)
   rf_addr_width = len;
 }
 
-void Enrf24::setRXaddress(const void *rxaddr)
+void analog_io::setRXaddress(const void *rxaddr)
 {
   _writeRegMultiLSB(RF24_RX_ADDR_P1, (uint8_t*)rxaddr, rf_addr_width);
 }
 
-void Enrf24::setTXaddress(const void *rxaddr)
+void analog_io::setTXaddress(const void *rxaddr)
 {
   _writeRegMultiLSB(RF24_TX_ADDR, (uint8_t*)rxaddr, rf_addr_width);
 }
 
-boolean Enrf24::rfSignalDetected()
+boolean analog_io::rfSignalDetected()
 {
   uint8_t rpd;
 
@@ -571,7 +574,7 @@ boolean Enrf24::rfSignalDetected()
   return (boolean)rpd;
 }
 
-uint32_t Enrf24::getSpeed()
+uint32_t analog_io::getSpeed()
 {
   uint8_t reg = _readReg(RF24_RF_SETUP) & 0x28;
 
@@ -586,7 +589,7 @@ uint32_t Enrf24::getSpeed()
   return 0UL;
 }
 
-int8_t Enrf24::getTXpower()
+int8_t analog_io::getTXpower()
 {
   uint8_t reg = _readReg(RF24_RF_SETUP) & 0x07;
 
@@ -603,7 +606,7 @@ int8_t Enrf24::getTXpower()
   return -18;
 }
 
-boolean Enrf24::getAutoAck()
+boolean analog_io::getAutoAck()
 {
   uint8_t reg = _readReg(RF24_EN_AA);
 
@@ -612,17 +615,17 @@ boolean Enrf24::getAutoAck()
   return false;
 }
 
-void Enrf24::getRXaddress(void *buf)
+void analog_io::getRXaddress(void *buf)
 {
   _readRegMultiLSB(RF24_RX_ADDR_P1, (uint8_t*)buf, rf_addr_width);
 }
 
-void Enrf24::getTXaddress(void *buf)
+void analog_io::getTXaddress(void *buf)
 {
   _readRegMultiLSB(RF24_TX_ADDR, (uint8_t*)buf, rf_addr_width);
 }
 
-unsigned int Enrf24::getCRC()
+unsigned int analog_io::getCRC()
 {
   uint8_t reg = _readReg(RF24_CONFIG) & 0x0C;
 

@@ -1,6 +1,9 @@
-/* nRF24L01+ I/O for Energia
+/* analog_io_lib for Energia and the MSP430 Sensor Node Hardware
+ * Forked from nRF24L01+ I/O for Energia
  *
- * Copyright (c) 2013 Eric Brundick <spirilis [at] linux dot com>
+ * Copyright (c) 2013 Eric Brundick < spirilis [at] linux  dot com >
+ * Copyright (c) 2015 Luke Beno     < lgbeno   [at] analog dot io  >
+ *
  *  Permission is hereby granted, free of charge, to any person 
  *  obtaining a copy of this software and associated documentation 
  *  files (the "Software"), to deal in the Software without 
@@ -22,10 +25,10 @@
  *  DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef _ENRF24_H
-#define _ENRF24_H
+#ifndef _ANALOG_IO_H
+#define _ANALOG_IO_H
 
-#define ENRF24_LIBRARY_VERSION "1.9"
+#define ANALOG_IO_LIBRARY_VERSION "1.0"
 
 #include <Arduino.h>
 #include <Print.h>
@@ -78,11 +81,11 @@
 
 
 /* Class definition--inherits from Print so we have .print() functions */
-class Enrf24 : public Print {
+class analog_io : public Print {
   public:
     boolean lastTXfailed;
 
-    Enrf24(uint8_t cePin, uint8_t csnPin, uint8_t irqPin);
+    analog_io(uint8_t cePin, uint8_t csnPin, uint8_t irqPin);
     void begin(uint32_t datarate=1000000, uint8_t channel=0);  // Specify bitrate & channel
     void end();      // Shut it off, clear the library's state
 
