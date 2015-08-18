@@ -12,7 +12,7 @@ TODO: 3. Subscribe to MQTT streams using the analog.io hub*
 
 Installation Instructions
 ======
-Download zip repository from this github page
-Unzip the package and rename the folder to "analog_io"
-move/copy this folder to the Energia Libraries folder, this is typically found in:
-  <Energia Location>/Contents/Resources/Java/hardware/msp430/libraries
+*Download zip repository from this github page
+*Unzip the package and rename the folder to "analog_io"
+*move/copy this folder to the Energia Libraries folder, this is typically found in:
+  **<Energia Location>/Contents/Resources/Java/hardware/msp430/libraries
