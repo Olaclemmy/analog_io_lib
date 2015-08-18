@@ -5,7 +5,14 @@ This library is inspired by the Enrf24 library but is expanded to encompass spec
 
 What is improved in this library is that users are also able to:
 1. Transmit 14byte Bluetooth Low Energy Beacons using the bleTransmit()
-2. Publish data to MQTT using the analog.io hub*
-3. Subscribe to MQTT streams using the analog.io hub*
+TODO: 2. Publish data to MQTT using the analog.io hub*
+TODO: 3. Subscribe to MQTT streams using the analog.io hub*
 
 *Requires analog.io hub
+
+Installation Instructions
+======
+Download zip repository from this github page
+Unzip the package and rename the folder to "analog_io"
+move/copy this folder to the Energia Libraries folder, this is typically found in:
+  <Energia Location>/Contents/Resources/Java/hardware/msp430/libraries
