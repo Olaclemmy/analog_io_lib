@@ -28,23 +28,47 @@
 #include <Arduino.h>
 #include <stdint.h>
 #include "analog_io.h"
-
+#define MY_MAC_0  0xEF
+#define MY_MAC_1  0xFF
+#define MY_MAC_2  0xC0
+#define MY_MAC_3  0xAA
+#define MY_MAC_4  0x18
+#define MY_MAC_5  0x00
 /* Constructor */
 analog_io::analog_io(uint8_t cePin, uint8_t csnPin, uint8_t irqPin)
 {
   _cePin = cePin;
   _csnPin = csnPin;
   _irqPin = irqPin;
-
+  mode = UNDEFINED_MODE;
   rf_status = 0;
   rf_addr_width = 5;
   txbuf_len = 0;
   readpending = 0;
+  backup_regs[0] = RF24_CONFIG;
+  backup_regs[1] = RF24_EN_AA;
+  backup_regs[2] = RF24_EN_RXADDR;
+  backup_regs[3] = RF24_SETUP_AW;
+  backup_regs[4] = RF24_SETUP_RETR;
+  backup_regs[5] = RF24_RF_SETUP;
+  backup_regs[6] = RF24_STATUS;
+  backup_regs[7] = RF24_DYNPD;
+  backup_regs[8] = RF24_FEATURE;
+  backup_regs[9] = RF24_RX_PW_P0;
+  backup_regs[10] = RF24_EN_RXADDR; //TODO convert to static const
+  backup_regs[11] = RF24_RF_CH;
+  chRf[0] = 2; //TODO convert to static const
+  chRf[1] = 26;
+  chRf[2] = 80;
+  chLe[0] = 37;
+  chLe[1] = 38;
+  chLe[2] = 39;
 }
 
 /* Initialization */
 void analog_io::begin(uint32_t datarate, uint8_t channel)
 {
+  //txbuf_len = 0;
   pinMode(_cePin, OUTPUT);
   digitalWrite(_cePin, LOW);
   pinMode(_csnPin, OUTPUT);
@@ -94,6 +118,7 @@ void analog_io::begin(uint32_t datarate, uint8_t channel)
   setAutoAckParams();
   setAddressLength(rf_addr_width);
   setCRC(true);  // Default = CRC on, 8-bit
+  mode = PROPRIETARY_MODE;
 }
 
 /* Formal shut-down/clearing of library state */
@@ -225,6 +250,7 @@ void analog_io::_readTXaddr(uint8_t *buf)
   _readRegMultiLSB(RF24_TX_ADDR, buf, rf_addr_width);
 }
 
+
 void analog_io::_writeRXaddrP0(uint8_t *buf)
 {
   _writeRegMultiLSB(RF24_RX_ADDR_P0, buf, rf_addr_width);
@@ -322,6 +348,7 @@ size_t analog_io::read(void *inbuf, uint8_t maxlen)
 // Perform TX of current ring-buffer contents
 void analog_io::flush()
 {
+  if (mode == BLE_MODE) bleEnd();
   uint8_t reg, addrbuf[5];
   boolean enaa=false, origrx=false;
 
@@ -637,4 +664,248 @@ unsigned int analog_io::getCRC()
   }
 
   return 0;
+}
+
+void analog_io::_btLeCrc(const uint8_t* data, uint8_t len, uint8_t* dst){
+
+  uint8_t v, t, d;
+
+  while(len--){
+  
+    d = *data++;
+    for(v = 0; v < 8; v++, d >>= 1){
+    
+      t = dst[0] >> 7;
+      
+      dst[0] <<= 1;
+      if(dst[1] & 0x80) dst[0] |= 1;
+      dst[1] <<= 1;
+      if(dst[2] & 0x80) dst[1] |= 1;
+      dst[2] <<= 1;
+      
+    
+      if(t != (d & 1)){
+      
+        dst[2] ^= 0x5B;
+        dst[1] ^= 0x06;
+      }
+    } 
+  }
+}
+
+uint8_t  analog_io::_swapbits(uint8_t a){
+
+  uint8_t v = 0;
+  
+  if(a & 0x80) v |= 0x01;
+  if(a & 0x40) v |= 0x02;
+  if(a & 0x20) v |= 0x04;
+  if(a & 0x10) v |= 0x08;
+  if(a & 0x08) v |= 0x10;
+  if(a & 0x04) v |= 0x20;
+  if(a & 0x02) v |= 0x40;
+  if(a & 0x01) v |= 0x80;
+
+  return v;
+}
+
+void analog_io::_btLeWhiten(uint8_t* data, uint8_t len, uint8_t whitenCoeff){
+
+  uint8_t  m;
+  
+  while(len--){
+  
+    for(m = 1; m; m <<= 1){
+    
+      if(whitenCoeff & 0x80){
+        
+        whitenCoeff ^= 0x11;
+        (*data) ^= m;
+      }
+      whitenCoeff <<= 1;
+    }
+    data++;
+  }
+}
+
+void analog_io::_btLePacketEncode(uint8_t* packet, uint8_t len, uint8_t chan){
+  //length is of packet, including crc. pre-populate crc in packet with initial crc value!
+
+  uint8_t i, dataLen = len - 3;
+  
+  _btLeCrc(packet, dataLen, packet + dataLen);
+  for(i = 0; i < 3; i++, dataLen++) packet[dataLen] = _swapbits(packet[dataLen]);
+  _btLeWhiten(packet, len, (_swapbits(chan) | 2)); //_btLeWhitenStart
+  for(i = 0; i < len; i++) packet[i] = _swapbits(packet[i]);
+  
+}
+
+// A function to read all current registers and save them in this object so that they can be restored at a later time
+void analog_io::_backupRegisters(void) {
+  for (i=0; i<12; i++) {
+    backup[i] = _readReg(backup_regs[i]);
+  }
+  _readRegMultiLSB(RF24_TX_ADDR,txaddr_bak,5);
+}
+
+// A function to restore all registers from a backup 
+void analog_io::_restoreRegisters(void) {
+  for (i=0; i<12; i++) {
+    _writeReg(backup_regs[i],backup[i]);
+  }
+  _writeRegMultiLSB(RF24_TX_ADDR,txaddr_bak,5);
+}
+
+// A function to setup the radio for a BLE transmission
+void analog_io::_configBle(void) {
+  pinMode(_cePin, OUTPUT);
+  digitalWrite(_cePin, LOW);
+  pinMode(_csnPin, OUTPUT);
+  digitalWrite(_csnPin, HIGH);
+  pinMode(_irqPin, INPUT);
+  digitalWrite(_irqPin, LOW);
+
+  _writeReg(RF24_CONFIG, 0x12); //on, no crc, int on RX/TX done
+  _writeReg(RF24_EN_AA, 0x00);  //no auto-acknowledge
+  _writeReg(RF24_EN_RXADDR, 0x00);  //no RX
+  _writeReg(RF24_SETUP_AW, 0x02); //5-byte address
+  _writeReg(RF24_SETUP_RETR, 0x00); //no auto-retransmit
+  _writeReg(RF24_RF_SETUP, 0x06); //1MBps at 0dBm
+  _writeReg(RF24_STATUS, 0x3E); //clear various flags
+  _writeReg(RF24_DYNPD, 0x00);  //no dynamic payloads
+  _writeReg(RF24_FEATURE, 0x00);  //no features
+  _writeReg(RF24_RX_PW_P0, 32); //always RX 32 bytes
+  _writeReg(RF24_EN_RXADDR, 0x01);  //RX on pipe 0
+
+  uint8_t buf[4];
+
+  buf[3] = _swapbits(0x8E);
+  buf[2] = _swapbits(0x89);
+  buf[1] = _swapbits(0xBE);
+  buf[0] = _swapbits(0xD6);
+  _writeRegMultiLSB(RF24_TX_ADDR, buf, 4);
+
+  mode = BLE_MODE;
+  //_writeRegMultiLSB(RF24_RX_ADDR_P0, txbuf, 4);
+}
+void analog_io::bleTransmit(char* name, uint8_t* payload, uint8_t payload_len) {
+  _bleTx(name, 0xFF, payload, payload_len);
+}
+
+void analog_io::_bleTx(char* name, uint8_t name_len, uint8_t* payload, uint8_t payload_len) {
+  if (mode != BLE_MODE) bleStart();
+    if (name_len == 0xFF) {
+      name_len = 0;
+      while (name[name_len]!=0x00) {
+        txbuf[13+name_len] = name[name_len];
+        // Limit name length to 14 bytes due to BLE limitation
+        if (name_len < 13)
+          name_len++;
+        else
+          break;
+      }
+    }
+    else {
+      if (name_len>13) name_len = 13;
+      for (i=0;i<name_len;i++) {
+        txbuf[13+i] = name[i];
+      }
+    } 
+
+    txbuf[0] = 0x42;  //PDU type, given address is random
+
+    txbuf[2] = 0xEF;
+    txbuf[3] = 0xFF;
+    txbuf[4] = 0xC0;
+    txbuf[5] = 0xAA;
+    txbuf[6] = 0x18;
+    txbuf[7] = 0x00;
+    
+    txbuf[8] = 2;   //flags (LE-only, limited discovery mode)
+    txbuf[9] = 0x01;
+    txbuf[10] = 0x05;
+    
+    txbuf[12] = 0x08;
+
+    if (name_len+payload_len>13) payload_len = 14-name_len;
+
+    txbuf[1] = 13+name_len+payload_len; // Total Packet length
+    txbuf[11] = name_len+1; // Length of Name only
+
+    txbuf_len = 13+name_len;
+
+    txbuf[txbuf_len++] = payload_len+1; // Payload length
+    txbuf[txbuf_len++] = 0xff;
+
+    if (payload_len == 0) {
+      payload_len = 1;
+      txbuf[txbuf_len++] = 0xFF;
+    }
+    else {
+      for (i=0;i<payload_len;i++) {
+        txbuf[txbuf_len++] = payload[i];
+      } 
+    }
+    
+    txbuf[txbuf_len++] = 0x55;  //CRC start value: 0x555555
+    txbuf[txbuf_len++] = 0x55;
+    txbuf[txbuf_len++] = 0x55;
+    
+    
+    if(++ch == sizeof(chRf)) ch = 0;
+    
+
+    _writeReg(RF24_RF_CH, chRf[ch]);
+    _writeReg(RF24_STATUS, 0x6E);
+
+    _btLePacketEncode(txbuf, txbuf_len, chLe[ch]);
+    
+    _issueCmd(RF24_FLUSH_RX);
+    _issueCmd(RF24_FLUSH_TX);
+
+    _issueCmdPayload(RF24_W_TX_PAYLOAD, txbuf, txbuf_len);
+    txbuf_len = 0;
+
+    _writeReg(RF24_STATUS, 0x6E);
+    _writeReg(RF24_CONFIG, 0x12); //tx on
+
+    digitalWrite(_cePin, HIGH); // sbi(PORTB, PIN_CE);   //do tx
+    delay(10); //delay_ms(10);
+    digitalWrite(_cePin, LOW); // cbi(PORTB, PIN_CE); (in preparation of switching to RX quickly)
+}
+
+void analog_io::bleStart() {
+  //_backupRegisters();
+
+  _readRegMultiLSB(RF24_TX_ADDR,txaddr_bak,5);
+  _configBle();
+}
+
+void analog_io::bleEnd(void) {
+  //_restoreRegisters();
+  begin();
+  _writeRegMultiLSB(RF24_TX_ADDR,txaddr_bak,5);
+}
+
+
+void analog_io::bleSingleTransmit(char* name, uint8_t* payload, uint8_t payload_len) {
+  bleStart();
+  bleTransmit(name,payload,payload_len);
+  bleEnd();
+}
+
+void analog_io::flushBle()
+{
+
+  if (txbuf_len < 13) txbuf[txbuf_len] = 0x00;
+  else txbuf[13] = 0x00;
+
+  bleTransmit((char*) txbuf);
+  txbuf_len = 0;  // Reset TX ring buffer
+
+  while (digitalRead(_irqPin) == HIGH)  // Wait until IRQ fires
+    ;
+  // IRQ fired
+  _maintenanceHook();  // Handle/clear IRQ
+
 }

@@ -63,6 +63,10 @@
   #define BITF                (0x8000)
 #endif
 
+ #define BLE_MODE         0x00
+ #define PROPRIETARY_MODE 0x01
+ #define UNDEFINED_MODE   0xFF
+
 /* Constants for speed, radio state */
 #define ENRF24_STATE_NOTPRESENT 0
 #define ENRF24_STATE_DEEPSLEEP 1
@@ -77,7 +81,6 @@
 #define ENRF24_IRQ_MASK     0x70
 
 #define ENRF24_CFGMASK_IRQ 0
-
 
 
 /* Class definition--inherits from Print so we have .print() functions */
@@ -143,16 +146,30 @@ class analog_io : public Print {
     void getTXaddress(void *);
     boolean getAutoAck(void);
     unsigned int getCRC(void);
-
+    void bleTransmit(char* name, uint8_t* payload=0x00, uint8_t payload_len=1);
+    void bleSingleTransmit(char* name, uint8_t* payload=0x00, uint8_t payload_len=1);
+    void bleStart();
+    void bleEnd(void);
+    void flushBle();
 
   private:
     uint8_t rf_status;
     uint8_t rf_addr_width;
     uint8_t txbuf_len;
     uint8_t txbuf[32];
+    uint8_t txaddr_bak[5];
+    uint8_t buf[32];
     uint8_t lastirq, readpending;
     uint8_t _cePin, _csnPin, _irqPin;
+    uint8_t backup_regs[11];
+    uint8_t backup[12];
+    uint8_t chRf[3];
+    uint8_t chLe[3];
+    uint8_t i, L, ch;
+    uint8_t mode;
 
+
+    void _bleTx(char* name, uint8_t name_len, uint8_t* payload, uint8_t payload_len);
     uint8_t _readReg(uint8_t addr);
     void _readRegMultiLSB(uint8_t addr, uint8_t *buf, size_t len);
     void _writeReg(uint8_t addr, uint8_t val);
@@ -167,6 +184,14 @@ class analog_io : public Print {
     void _readTXaddr(uint8_t *buf);
     void _writeRXaddrP0(uint8_t *buf);
     void _maintenanceHook();  // Handles IRQs and purges RX queue when erroneous contents exist.
+    void _btLePacketEncode(uint8_t* packet, uint8_t len, uint8_t chan);
+    void _btLeWhiten(uint8_t* data, uint8_t len, uint8_t whitenCoeff);
+    uint8_t _btLeWhitenStart(uint8_t chan);
+    uint8_t  _swapbits(uint8_t a);
+    void _btLeCrc(const uint8_t* data, uint8_t len, uint8_t* dst);
+    void _backupRegisters(void);
+    void _restoreRegisters(void);
+    void _configBle(void);
 
 /* Private planning:
    Need to keep track of:
